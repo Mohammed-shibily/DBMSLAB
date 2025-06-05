@@ -1,0 +1,409 @@
+view:
+-----
+In MySQL, a view is a virtual table based on the result of a SELECT query. It doesn't store data itself but provides a way to simplify complex queries or reuse SQL logic.
+
+CREATE TABLE students (
+    student_id INT PRIMARY KEY,
+    name VARCHAR(100)
+);
+
+INSERT INTO students VALUES(1, 'Alice'),(2, 'Bob'),(3, 'Charlie');
+
+CREATE TABLE marks (
+    mark_id INT PRIMARY KEY,
+    student_id INT,
+    subject VARCHAR(100),
+    score INT,
+    FOREIGN KEY (student_id) REFERENCES students(student_id)
+);
+
+INSERT INTO marks VALUES
+(1, 1, 'Math', 85),
+(2, 1, 'English', 90),
+(3, 2, 'Math', 78),
+(4, 3, 'English', 88);
+
+
+CREATE VIEW student_scores AS
+SELECT
+    s.student_id,
+    s.name,
+    m.subject,
+    m.score
+FROM students s
+JOIN marks m ON s.student_id = m.student_id;
+
+SELECT * FROM student_scores;
+
++------------+---------+---------+-------+
+| student_id | name    | subject | score |
++------------+---------+---------+-------+
+| 1          | Alice   | Math    | 85    |
+| 1          | Alice   | English | 90    |
+| 2          | Bob     | Math    | 78    |
+| 3          | Charlie | English | 88    |
++------------+---------+---------+-------+
+
+
+TO drop a view: DROP VIEW student_scores;
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Trigger:
+-------
+A trigger is a set of SQL statements that automatically executes in response to a specific event (INSERT, UPDATE, DELETE) on a particular table.
+syx:
+
+CREATE TRIGGER trigger_name
+[BEFORE | AFTER] INSERT | UPDATE | DELETE
+ON table_name
+FOR EACH ROW
+BEGIN
+    -- SQL logic here
+END;
+
+| **Event** | **Trigger Timing** | **Use Cases**                                                 |
+|----------|--------------------|----------------------------------------------------------------|
+| `INSERT` | BEFORE / AFTER     | Logs, data validation, update stock, audit trails             |
+| `UPDATE` | BEFORE / AFTER     | Track changes, validate updates, adjust related data          |
+| `DELETE` | BEFORE / AFTER     | Archive data, audit logs, clean related entries               |
+
+
+
+eg:
+
+CREATE TABLE employees (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100),
+    position VARCHAR(100),
+    salary DECIMAL(10, 2)
+);
+
+CREATE TABLE employee_log (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    emp_name VARCHAR(100),
+    action_time DATETIME,
+    action_type VARCHAR(50)
+);
+
+DELIMITER //
+
+CREATE TRIGGER after_employee_insert
+AFTER INSERT ON employees
+FOR EACH ROW
+BEGIN
+  INSERT INTO employee_log (emp_name, action_time, action_type)
+  VALUES (NEW.name, NOW(), 'INSERT');
+END;
+//
+
+DELIMITER ;
+
+Insert Data and Test
+INSERT INTO employees (name, position, salary)
+VALUES ('John Doe', 'Manager', 75000);
+
+Check the Log Table
+SELECT * FROM employee_log;
+
++--------+-----------+---------------------+-------------+
+| log_id | emp_name  | action_time         | action_type |
++--------+-----------+---------------------+-------------+
+| 1      | John Doe  | 2025-05-20 10:15:00 | INSERT      |
++--------+-----------+---------------------+-------------+
+
+--------------------------------------------------------------------------------------------------------------------------
+CREATE TABLE products (
+    product_id INT PRIMARY KEY,
+    name VARCHAR(100),
+    stock INT
+);
+
+CREATE TABLE sales (
+    sale_id INT PRIMARY KEY AUTO_INCREMENT,
+    product_id INT,
+    quantity_sold INT,
+    sale_date DATE,
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+
+Trigger to Update Stock After a Sale:
+DELIMITER $$
+
+CREATE TRIGGER update_stock_after_sale
+AFTER INSERT ON sales
+FOR EACH ROW
+BEGIN
+    UPDATE products
+    SET stock = stock - NEW.quantity_sold
+    WHERE product_id = NEW.product_id;
+END$$
+
+DELIMITER ;
+
+Example Usage:
+-- Insert a product with 100 items in stock
+INSERT INTO products (product_id, name, stock) VALUES (1, 'Keyboard', 100);
+
+mysql> select * from products;
++------------+-------+-------+
+| product_id | name  | stock |
++------------+-------+-------+
+|          1 | mouse |   100 |
++------------+-------+-------+
+
+-- Insert a sale of 5 keyboards
+INSERT INTO sales (product_id, quantity_sold, sale_date) VALUES (1, 5, CURDATE());
+
+mysql> select * from sales;
++---------+------------+---------------+------------+
+| sale_id | product_id | quantity_sold | sale_date  |
++---------+------------+---------------+------------+
+|       1 |          1 |             5 | 2025-05-20 |
++---------+------------+---------------+------------+
+
+-- Check product stock
+SELECT * FROM products;
+
+Expected Output:(after trigger - stock is updated from 100 to 95)
++------------+----------+-------+
+| product_id | name     | stock |
++------------+----------+-------+
+| 1          | Keyboard | 95    |
++------------+----------+-------+
+-------------------------------------------------------------------------------------------------------------------------------
+
+MySQL stored procedure:
+-----------------------
+
+-- Table for members
+CREATE TABLE members (
+    member_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100)
+);
+
+-- Table for issued books
+CREATE TABLE issues (
+    issue_id INT AUTO_INCREMENT PRIMARY KEY,
+    book_title VARCHAR(100),
+    member_id INT,
+    issue_date DATE,
+    FOREIGN KEY (member_id) REFERENCES members(member_id)
+);
+
+CREATE TABLE books (
+    accno INT PRIMARY KEY,
+    title VARCHAR(100),
+    price DECIMAL(10,2)
+);
+
+INSERT INTO books VALUES
+(1, 'The Alchemist', 299.99),
+(2, '1984', 199.50);
+
+-- Members
+INSERT INTO members (name) VALUES
+('Alice'), ('Bob'), ('Charlie');
+
+-- Issues
+INSERT INTO issues (book_title, member_id, issue_date) VALUES
+('The Alchemist', 1, '2024-01-10'),
+('1984', 1, '2024-01-15'),
+('Clean Code', 2, '2024-02-01');
+
+Show all books issued to a specific member: 
+DELIMITER //
+
+CREATE PROCEDURE GetIssuedBooksByMember(IN p_member_id INT)
+BEGIN
+    SELECT m.name AS MemberName, i.book_title AS BookTitle, i.issue_date AS IssueDate
+    FROM members m
+    JOIN issues i ON m.member_id = i.member_id
+    WHERE m.member_id = p_member_id;
+END;
+//
+
+DELIMITER ;
+
+CALL GetIssuedBooksByMember(1);
++-------+---------------+------------+
+| name  | book_title    | issue_date |
++-------+---------------+------------+
+| Alice | The Alchemist | 2024-01-10 |
+| Alice | 1984          | 2024-01-15 |
++-------+---------------+------------+
+
+1) create a function to display the price of a book
+
+DELIMITER $$
+
+CREATE FUNCTION get_price(a INT) 
+RETURNS DECIMAL(10,2) 
+DETERMINISTIC
+BEGIN
+    DECLARE p DECIMAL(10,2);
+    SELECT price INTO p FROM books WHERE accno = a;
+    RETURN p;
+END$$
+
+DELIMITER ;
+
+SELECT get_price(1);
++--------------+
+| get_price(1) |
++--------------+
+|       299.99 |
++--------------+
+
+2) create a function to calculate and returns the total fine amount
+
+DELIMITER $$
+
+CREATE FUNCTION total_fine()
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+    DECLARE total DECIMAL(10,2);
+    SELECT SUM(fine) INTO total FROM returns;
+    RETURN total;
+END$$
+
+DELIMITER ;
+
+SELECT total_fine();
+
++---------------+
+| total_fines() |
++---------------+
+|         15.00 |
++---------------+
+
+3) Create a trigger to set the availability to 'NO' when a book is issued.
+
+DELIMITER $$
+
+CREATE TRIGGER set_availability_no
+AFTER INSERT ON issue
+FOR EACH ROW
+BEGIN
+    UPDATE books
+    SET availability = 'NO'
+    WHERE accno = NEW.accno;
+END$$
+
+DELIMITER ;
+
+check about NO:
+mysql> select * from books;
++-------+-----------------+-----------------+-------+-----------+--------------+-------------+
+| accno | title           | author          | price | type      | availability | publisherid |
++-------+-----------------+-----------------+-------+-----------+--------------+-------------+
+|     6 | learning sql    | alan beaulieu   | 45.99 | lending   | yes          |           3 |
+|     7 | data structures | mark weiss      | 55.50 | reference | yes          |           2 |
+|     8 | dbms concepts   | silberschatz    | 65.25 | lending   | yes          |           1 |
+|     9 | python basics   | eric matthes    | 42.75 | lending   | yes          |           5 |
+|    10 | java complete   | herbert schildt | 50.99 | lending   | yes          |           4 |
++-------+-----------------+-----------------+-------+-----------+--------------+-------------+
+
+mysql> select * from members;
++----------+-------+--------------+---------+
+| memberid | name  | address      | type    |
++----------+-------+--------------+---------+
+|        1 | alice | springfield  | student |
+|        2 | bob   | shelbyville  | staff   |
+|        3 | carol | capital city | student |
+|        4 | david | metropolis   | staff   |
+|        5 | eve   | gotham       | student |
++----------+-------+--------------+---------+
+
+mysql> insert into issues values(999,2,6,'2025-04-30','2025-05-13');
+
+mysql> select * from books;
++-------+-----------------+-----------------+-------+-----------+--------------+-------------+
+| accno | title           | author          | price | type      | availability | publisherid |
++-------+-----------------+-----------------+-------+-----------+--------------+-------------+
+|     6 | learning sql    | alan beaulieu   | 45.99 | lending   | no           |           3 |
+|     7 | data structures | mark weiss      | 55.50 | reference | yes          |           2 |
+|     8 | dbms concepts   | silberschatz    | 65.25 | lending   | yes          |           1 |
+|     9 | python basics   | eric matthes    | 42.75 | lending   | yes          |           5 |
+|    10 | java complete   | herbert schildt | 50.99 | lending   | yes          |           4 |
++-------+-----------------+-----------------+-------+-----------+--------------+-------------+
+
+mysql> select * from issues;
++---------+----------+-------+------------+------------+
+| issueid | memberid | accno | issuedate  | duedate    |
++---------+----------+-------+------------+------------+
+|      11 |        1 |     6 | 2025-03-01 | 2025-03-15 |
+|      12 |        2 |     7 | 2025-03-02 | 2025-03-16 |
+|      13 |        3 |     8 | 2025-03-05 | 2025-03-19 |
+|      14 |        4 |     9 | 2025-03-10 | 2025-03-24 |
+|      15 |        5 |    10 | 2025-03-12 | 2025-03-26 |
+|     999 |        2 |     6 | 2025-04-30 | 2025-05-13 |
++---------+----------+-------+------------+------------+
+----------------------------------------------------------------------------------------------------------------------------------------------------
+
+Stored Procedure:
+----------------
+
+books(accno INT, title VARCHAR(100), price DECIMAL(10,2))
+
+issues(issue_id INT, accno INT, member_id INT, issue_date DATE, return_date DATE)
+select * from issues;
++----------+---------------+-----------+------------+
+| issue_id | book_title    | member_id | issue_date |
++----------+---------------+-----------+------------+
+|        4 | The Alchemist |         1 | 2024-01-10 |
+|        5 | 1984          |         1 | 2024-01-15 |
+|        6 | Clean Code    |         2 | 2024-02-01 |
++----------+---------------+-----------+------------+
+
+Get count of books issued to a member: 
+DELIMITER $$
+
+CREATE PROCEDURE GetIssuedBookCount(IN memberID INT, OUT issuedCount INT)
+BEGIN
+    SELECT COUNT(*) INTO issuedCount
+    FROM issues
+    WHERE member_id = memberID;
+END$$
+
+DELIMITER ;
+
+CALL GetIssuedBookCount(2, @count);
+SELECT @count;
++--------+
+| @count |
++--------+
+|      2 |
++--------+
+
+
+NOTES:
+------
+-------------------------------------------------------------------------------------------------------------------------------------------
+Symbol            	Meaning	                                                          Scope                                               |
+------------------------------------------------------------------------------------------------------------------------------------------|
+@var             	User session variable	                                          Available during current session, outside procedures|
+DECLARE var     	Local variable inside procedure or function 	                  Only inside the procedure/function                  |
+------------------------------------------------------------------------------------------------------------------------------------------|
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Aspect                                        | Stored Procedure                                                                    | Stored Function                                                  |
+| --------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **Purpose**                                   | Performs a task or set of tasks (can be complex).                                   | Returns a single value (like a mathematical function).           |
+| **Return type**                               | Does **not** return a value directly; can return result sets or use OUT parameters. | Returns a **single scalar value** using `RETURN`.                |
+| **Usage in SQL**                              | Executed with `CALL procedure_name(...)`.                                           | Called within SQL statements using `SELECT function_name(...)`.  |
+| **Can be used in expressions?**               | No                                                                                  | Yes                                                              |
+| **Can have input/output parameters?**         | Yes (IN, OUT, INOUT parameters)                                                     | Only IN parameters                                               |
+| **Transaction control**                       | Can commit or rollback transactions.                                                | Cannot manage transactions                                       |
+| **Side effects**                              | Can perform operations that modify data (INSERT, UPDATE, DELETE).                   | Generally should not have side effects (best practice).          |
+| **Can be called from triggers or functions?** | Yes                                                                                 | No                                                               |
+| **Syntax**                                    | `CREATE PROCEDURE procedure_name(...) BEGIN ... END;`                               | `CREATE FUNCTION function_name(...) RETURNS type BEGIN ... END;` |
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Use of SELECT and CALL:
+----------------------
+SELECT function_name(parameters);
+        Stored functions return a single value (scalar) and are used inside queries just like built-in functions.
+
+CALL procedure_name(parameters);
+        Stored procedures do not return a value directly, but can return result sets (like rows) or output parameters.
